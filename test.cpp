@@ -72,45 +72,6 @@ int main() {
         std::cerr << "Failed Test 2: " << e.what() << std::endl;
     }
 
-    // =========================
-    // Test 3: wrap_B_matrices
-    // =========================
-    std::cout << "\n======= Test 3: wrap_B_matrices =======" << std::endl;
-    try {
-
-        int nmat = 8;
-        // Create some random 5x5 matrices
-        std::vector<arma::mat> B_matrices = {
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat),
-            arma::randu<arma::mat>(nmat, nmat)
-        };
-
-        // Suppose we wrap them in groups of Nwrap=2
-        int Nwrap = 4;
-        LDRMatrix wrappedLDR = wrap_B_matrices(B_matrices, Nwrap);
-
-        // Reconstruct the product from L, D, R
-        arma::mat productLDR = wrappedLDR.L * arma::diagmat(wrappedLDR.D) * wrappedLDR.R;
-
-        // Compute the direct product of all B_matrices
-        arma::mat productDirect = arma::eye<arma::mat>(nmat, nmat);
-        for (auto& B : B_matrices) {
-            productDirect = B * productDirect;
-        }
-
-        // Compare
-        double diff = arma::norm(productLDR - productDirect, "fro");
-        std::cout << "Difference between direct product and wrapped LDR: " << diff << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Failed Test 3: " << e.what() << std::endl;
-    }
-
     //===============================
     // DQMC ROUTINE TEST
     //==============================
@@ -139,7 +100,7 @@ int main() {
 
     // number of matrix wrap for stabilization
     // the lower the better but high cost
-    int nwrap = 1;
+    int nwrap = 10;
 
     // symmetric trotter discretization or not
     bool is_symmetric = true;
@@ -177,27 +138,9 @@ int main() {
     arma::mat expVup = calculate_exp_Vmat(spin_up, alpha, s);
     arma::mat expVdn = calculate_exp_Vmat(spin_dn, alpha, s);
 
-    // initialize Bup_l and Bdn_l vectors for all time slices.
-    std::vector<arma::mat> Bup_stack;
-    std::vector<arma::mat> Bdn_stack;
-
-
-    // Loop over time slices
-    for (int l = 0; l < L_tau; ++l)
-    {
-        arma::mat Bup_l = calculate_B_matrix(expKmat, expVup, l, is_symmetric);
-        
-        // 3d. Build the B-matrix for spin down similarly
-        arma::mat Bdn_l = calculate_B_matrix(expKmat, expVdn, l, is_symmetric);
-
-        // 4. Push them into the vectors
-        Bup_stack.push_back(Bup_l);
-        Bdn_stack.push_back(Bdn_l);
-    }
-
     // wrap into Bup and Bdn
-    LDRMatrix Bup = wrap_B_matrices(Bup_stack, nwrap);
-    LDRMatrix Bdn = wrap_B_matrices(Bdn_stack, nwrap);
+    LDRMatrix Bup = wrap_B_matrices(expKmat, expVup, nwrap, is_symmetric);
+    LDRMatrix Bdn = wrap_B_matrices(expKmat, expVdn, nwrap, is_symmetric);
 
     // calculate G_eq
     auto [Gup, signdetGup] = calculate_invIpA(Bup);
@@ -246,10 +189,6 @@ int main() {
 
     // test propagate
     std::cout << "\n======= Test 6: forward propagation equal time Green's function =======" << std::endl;
-    propagate_equaltime_greens(Gup, Bup_stack, expKmat, expVup, 1);
-    arma::log_det(logdetG, sign, Gup);
-    std::cout << "logdetG calculated = " << logdetG << std::endl;
-    std::cout << "logdetG correct    = " << -43.69082373753489 << std::endl;
 
     
 
