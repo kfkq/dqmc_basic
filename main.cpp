@@ -5,6 +5,12 @@ int main() {
     // start seeding for main program, once.
     std::srand(static_cast<unsigned int>(std::time(0)));
 
+    // create a random number generator
+    std::random_device rd;  // Seed generator (non-deterministic)
+    std::mt19937 gen(rd()); // Mersenne Twister random number generator
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+
     // Nearest neighbor hopping term
     double t = 1.0;
     std::cout << "nearest neighbor hopping: " << t << std::endl;
@@ -14,7 +20,7 @@ int main() {
     std::cout << "chemical potential: " << mu << std::endl;
 
     // Local U interaction term
-    double U = 0.0;
+    double U = 2.0;
     std::cout << "local interaction U: " << U << std::endl;
 
     // inverse temperature
@@ -36,12 +42,20 @@ int main() {
 
     // number of matrix wrap for stabilization
     // the lower the better but high cost
-    int nwrap = 1;
+    int nwrap = 8;
     std::cout << "number of matrix wrap for stabilization: " << nwrap << std::endl;
+
+    // number of time slice before recalculalting G_eq from scratch
+    int nstab = 5;
+    std::cout << "number of time slice before recalculating G_eq from scratch: " << nstab << std::endl;
 
     // symmetric trotter discretization or not
     bool is_symmetric = true;
     std::cout << "symmetric decomposition: " << is_symmetric << std::endl;
+
+    // forward propagation or not
+    bool is_forward = true;
+    std::cout << "forward propagation: " << is_forward << std::endl;
 
     if (is_symmetric)
     {
@@ -52,12 +66,12 @@ int main() {
     double spin_dn = -1.0;
 
     // kinetic matrix
-    arma::mat Kmat = build_Kmat(L, t, mu);
+    arma::mat K = build_Kmat(L, t, mu);
 
     // calculate exponential of the kinetic matrix exp(- dt * K) and exp(+ dt * K)
     // This is NxN matrices
-    arma::mat expKmat = calculate_exp_Kmat(Kmat, delta_tau, -1.0);
-    arma::mat inv_expKmat = calculate_exp_Kmat(Kmat, delta_tau, 1.0);
+    arma::mat expK = calculate_exp_Kmat(K, delta_tau, -1.0);
+    arma::mat inv_expK = calculate_exp_Kmat(K, delta_tau, 1.0);
 
     // hubbard stratonovich for hubbard U
     // define constant alpha associated from HS transformation
@@ -79,61 +93,85 @@ int main() {
     std::vector<arma::mat> Bup_stack;
     std::vector<arma::mat> Bdn_stack;
 
-
-    // Loop over time slices
-    for (int l = 0; l < L_tau; ++l)
-    {
-        arma::mat Bup_l = calculate_B_matrix(expKmat, expVup, l, is_symmetric);
-        
-        // 3d. Build the B-matrix for spin down similarly
-        arma::mat Bdn_l = calculate_B_matrix(expKmat, expVdn, l, is_symmetric);
-
-        // 4. Push them into the vectors
-        Bup_stack.push_back(Bup_l);
-        Bdn_stack.push_back(Bdn_l);
-    }
-
     // wrap into Bup and Bdn
-    LDRMatrix Bup = wrap_B_matrices(Bup_stack, nwrap);
-    LDRMatrix Bdn = wrap_B_matrices(Bdn_stack, nwrap);
+    LDRMatrix Bup = wrap_B_matrices(expK, expVup, nwrap, is_symmetric);
+    LDRMatrix Bdn = wrap_B_matrices(expK, expVdn, nwrap, is_symmetric);
 
-    // calculate G_eq
+    // calculate G_eq_00
     auto [Gup, signdetGup] = calculate_invIpA(Bup);
     auto [Gdn, signdetGdn] = calculate_invIpA(Bdn);
 
-    for (int l = 0; l < L_tau; l++){
-        // if symmetric half-warp
+    double acceptance_rate = 0.0;
 
-        // get hs field for l
+    for (int l = 0; l < L_tau; l++){
+        // propagate forward to G_eq(\tau,\tau)
+        propagate_equaltime_greens(Gup, expK, expVup, l, is_symmetric, true);
+        propagate_equaltime_greens(Gdn, expK, expVdn, l, is_symmetric, true);
+
+        // if symmetric warp
+        if (is_symmetric)
+        {
+            symmmetric_warp_greens(Gup, expK, inv_expK, true);
+            symmmetric_warp_greens(Gdn, expK, inv_expK, true);
+        }
 
         // shuffle the sites
+        std::vector<int> shuffled_sites = shuffle_numbers(s.n_rows, rng);
 
-        // n_site_accepted set to zero
-
+        int accepted = 0;
         for (int& site : shuffled_sites){
             // update ratio r_up r_dn
+            double Gup_ii = Gup(site, site);
+            double Gdn_ii = Gdn(site, site);
+            double s_il = s(site,l);
+
+            auto [ratio_up, delta_up] = update_ratio_hubbard(Gup_ii, s_il, alpha, spin_up);
+            auto [ratio_dn, delta_dn] = update_ratio_hubbard(Gdn_ii, s_il, alpha, spin_dn);
 
             // probabiility
+            double prob = abs(ratio_up * ratio_dn);
 
-            if (rand() < Prob){
+            if (dis(gen) < prob){
                 // add n_site accepted counter
+                accepted += 1;
 
                 // flip the ising configuration
+                s(site, l) = -s_il;
 
                 // update green's function locally
+                local_update_greens(Gup, expVup, ratio_up, delta_up, site, l);
+                local_update_greens(Gdn, expVdn, ratio_dn, delta_dn, site, l);
             }
             
         }
 
-        // acceptance rate total += n_site_accepted / N / L_tau
+        // acceptance rate total += n_site_accepted / N
+        acceptance_rate = static_cast<double>(accepted) / N;
 
-        // if symmetric half_warp reverse
+        // if symmetric warp reverse
+        if (is_symmetric)
+        {
+            symmmetric_warp_greens(Gup, expK, inv_expK, false);
+            symmmetric_warp_greens(Gdn, expK, inv_expK, false);
+        }
 
         // recalculate Green's function for stability
+        if (l % nstab == 0)
+        {
+            // calculate G(tau, tau) from scratch
 
-        // record numerical error
+            // shift the expVup and expVdn so the order of B(\tau,0)B(\beta,0) is correct
+            arma::mat expVup_shifted = shiftMatrixColumnsLeft(expVup, l + 1);
+            arma::mat expVdn_shifted = shiftMatrixColumnsLeft(expVdn, l + 1);
 
-        // propagate for next Green eq
+            // wrap into Bup and Bdn = B(\tau,0)B(\beta,0)
+            LDRMatrix Bup = wrap_B_matrices(expK, expVup_shifted, nwrap, is_symmetric);
+            LDRMatrix Bdn = wrap_B_matrices(expK, expVdn_shifted, nwrap, is_symmetric);
+
+            // calculate G_eq
+            auto [Gup, signdetGup] = calculate_invIpA(Bup);
+            auto [Gdn, signdetGdn] = calculate_invIpA(Bdn);
+        }
         
     }
 

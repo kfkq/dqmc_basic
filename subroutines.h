@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 #include <vector>
+#include <random>
 #include <armadillo>
 
 // Struct for LDR representation
@@ -16,11 +17,15 @@ struct LDRMatrix {
 template <typename T>
 int sign(T value);
 
+std::vector<int> shuffle_numbers(int N, std::mt19937 rng);
+
+arma::mat shiftMatrixColumnsLeft(const arma::mat& matrix, int k);
+
 LDRMatrix qr_LDR(arma::mat& M);
 
 std::pair<arma::mat, double> calculate_invIpA(LDRMatrix& A_LDR);
 
-LDRMatrix wrap_B_matrices(std::vector<arma::mat>& B_matrices, int Nwrap);
+LDRMatrix wrap_B_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, bool is_symmetric);
 
 arma::mat build_Kmat(int L, double t, double mu);
 
@@ -36,10 +41,11 @@ std::tuple<double, double> update_ratio_hubbard(double G_ii, double s_il, double
 
 void propagate_equaltime_greens(
     arma::mat& G,
-    std::vector<arma::mat>& B,
-    arma::mat expK,
-    arma::mat expV,
-    int l
+    arma::mat& expK,
+    arma::mat& expV,
+    int l,
+    bool is_symmetric,
+    bool forward
 );
 
 void symmmetric_warp_greens(

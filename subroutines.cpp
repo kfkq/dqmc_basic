@@ -13,6 +13,42 @@ int sign(T value) {
     return (value > 0) - (value < 0);
 }
 
+
+std::vector<int> shuffle_numbers(int N, std::mt19937 rng) {
+    // Step 1: Create a vector containing numbers from 1 to N
+    std::vector<int> numbers(N);
+    for (int i = 0; i < N; ++i) {
+        numbers[i] = i; // Fill with 1, 2, ..., N
+    }
+
+    // Step 2: Shuffle the vector using std::shuffle
+    std::shuffle(numbers.begin(), numbers.end(), rng);
+
+    return numbers;
+}
+
+arma::mat shiftMatrixColumnsLeft(const arma::mat& matrix, int k) {
+    if (matrix.is_empty()) return arma::mat();
+    
+    int cols = matrix.n_cols;
+    
+    // Normalize k to be within matrix size
+    k = k % cols;
+    if (k == 0) return matrix;
+    
+    // Create new matrix for the result
+    arma::mat result = matrix;
+    
+    // Perform the shift
+    for (size_t j = 0; j < cols; j++) {
+        // Calculate new column position after left shift
+        size_t newCol = (cols + j - k) % cols;
+        result.col(newCol) = matrix.col(j);
+    }
+    
+    return result;
+}
+
 LDRMatrix qr_LDR(arma::mat& M) {
     // Matrices for storing the QR decomposition
     arma::mat Q, R_temp;   // Q: Orthogonal matrix, R_temp: Triangular matrix from QR
@@ -79,16 +115,49 @@ std::pair<arma::mat, double> calculate_invIpA(LDRMatrix& A_LDR) {
     return std::make_pair(result, sgnDetResult);
 }
 
-LDRMatrix wrap_B_matrices(std::vector<arma::mat>& B_matrices, int Nwrap) {
+arma::mat calculate_B_matrix(const arma::mat& expK, arma::mat expV, int time_slice, bool is_symmetric) {
+    // Step 1: Extract the diagonal vector from expV for the given time slice.
+    //         - `expV` is a matrix where each column corresponds to a time slice.
+    //         - `diag_expV` is the diagonal vector for the current time slice.
+    arma::vec diag_expV = expV.col(time_slice);
+
+    // Step 2: Construct a diagonal matrix from the diagonal vector diag_expV.
+    //         - This represents the potential energy contribution for the current time slice.
+    arma::mat diagExpV = arma::diagmat(diag_expV);
+
+    arma::mat B; // Initialize the B-matrix.
+
+    // Step 3: Compute the B-matrix based on the Trotter decomposition type.
+    if (is_symmetric) {
+        // Symmetric Trotter decomposition:
+        //   B = exp(-dt/2 * K) * diag(expV) * exp(-dt/2 * K)
+        //   - `expmKmat`: Represents exp(-dt/2 * K) (precomputed outside this function).
+        //   - `diagExpV`: Diagonal matrix for the potential term.
+        B = expK * diagExpV * expK;
+    } else {
+        // Asymmetric Trotter decomposition:
+        //   B = exp(-dt * K) * diag(expV)
+        //   - `expmKmat`: Represents exp(-dt * K).
+        //   - `diagExpV`: Diagonal matrix for the potential term.
+        B = expK * diagExpV;
+    }
+
+    // Step 4: Return the computed B-matrix.
+    return B;
+}
+
+LDRMatrix wrap_B_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, bool is_symmetric) {
     // Step 0: Validate input.
-    int L = B_matrices.size(); // Total number of matrices
+    int L = expV.n_cols; // Total number of matrices
     if (L % Nwrap != 0) {
         // Ensure the total number of matrices L is divisible by Nwrap.
         throw std::invalid_argument("L (number of matrices) must be divisible by Nwrap.");
     }
 
-    int nsize = B_matrices[0].n_rows; // Size of the square matrices (assumes consistent dimensions)
+    int nsize = expV.n_rows; // Size of the square matrices (assumes consistent dimensions)
     int num_groups = L / Nwrap;      // Number of groups formed by Nwrap
+
+    arma::mat B_l;
 
     // Step 1: Compute the product of each group.
     //         Multiply the matrices in groups of Nwrap and store the results in Bgroup.
@@ -97,7 +166,8 @@ LDRMatrix wrap_B_matrices(std::vector<arma::mat>& B_matrices, int Nwrap) {
         arma::mat B_dum = arma::eye<arma::mat>(nsize, nsize); // Start with an identity matrix
         for (int j = 0; j < Nwrap; ++j) {
             // Multiply matrices in the current group: B_dum = B_{i * Nwrap} * ... * B_{i * Nwrap + Nwrap-1}
-            B_dum = B_matrices[i * Nwrap + j] * B_dum;
+            B_l = calculate_B_matrix(expK, expV, i*Nwrap+j, is_symmetric);
+            B_dum = B_l * B_dum;
         }
         Bgroup[i] = B_dum; // Store the product for this group
     }
@@ -197,27 +267,25 @@ arma::mat calculate_exp_Kmat(const arma::mat& K, const double& delta_tau, double
 
 arma::Mat<int> initialize_random_ising(int L, int L_tau) {
     // Step 1: Compute the total number of lattice sites.
-    //         N = L^2, where L is the side length of the square lattice.
-    int N = L * L;
+    int N = L * L; // Total number of lattice sites
 
     // Step 2: Create a matrix to store the Ising configurations.
-    //         The matrix has dimensions N x L_tau, where:
-    //         - Rows (N) represent lattice sites.
-    //         - Columns (L_tau) represent imaginary time slices.
-    arma::Mat<int> config(N, L_tau);
+    arma::Mat<int> config(N, L_tau); // Matrix with N rows and L_tau columns
 
-    // Step 3: Iterate over all lattice sites and time slices to assign random spins.
-    for (int i = 0; i < N; ++i) {         // Loop over lattice sites
-        for (int j = 0; j < L_tau; ++j) { // Loop over time slices
-            // Randomly assign a spin of +1 or -1 to the site at (i, j).
-            // Use `std::rand()` to generate a random number:
-            // - If the random number modulo 2 is 0, assign -1.
-            // - Otherwise, assign 1.
-            config(i, j) = (std::rand() % 2 == 0) ? -1 : 1;
+    // Step 3: Set up a random number generator.
+    std::random_device rd;          // Non-deterministic seed
+    std::mt19937 gen(rd());         // Mersenne Twister generator seeded with rd()
+    std::uniform_int_distribution<> dis(0, 1); // Uniform distribution between 0 and 1
+
+    // Step 4: Populate the Ising configuration matrix with random spins.
+    for (int i = 0; i < N; ++i) {          // Loop over lattice sites
+        for (int j = 0; j < L_tau; ++j) {  // Loop over time slices
+            // Generate a random spin (+1 or -1)
+            config(i, j) = (dis(gen) == 0) ? -1 : 1;
         }
     }
 
-    // Step 4: Return the initialized configuration matrix.
+    // Step 5: Return the initialized configuration matrix.
     return config;
 }
 
@@ -241,37 +309,6 @@ arma::mat calculate_exp_Vmat(double sgn, const double& alpha, arma::Mat<int> s) 
 
     // Step 5: Return the resulting matrix `expV`.
     return expV;
-}
-
-arma::mat calculate_B_matrix(const arma::mat& expK, arma::mat expV, int time_slice, bool is_symmetric) {
-    // Step 1: Extract the diagonal vector from expV for the given time slice.
-    //         - `expV` is a matrix where each column corresponds to a time slice.
-    //         - `diag_expV` is the diagonal vector for the current time slice.
-    arma::vec diag_expV = expV.col(time_slice);
-
-    // Step 2: Construct a diagonal matrix from the diagonal vector diag_expV.
-    //         - This represents the potential energy contribution for the current time slice.
-    arma::mat diagExpV = arma::diagmat(diag_expV);
-
-    arma::mat B; // Initialize the B-matrix.
-
-    // Step 3: Compute the B-matrix based on the Trotter decomposition type.
-    if (is_symmetric) {
-        // Symmetric Trotter decomposition:
-        //   B = exp(-dt/2 * K) * diag(expV) * exp(-dt/2 * K)
-        //   - `expmKmat`: Represents exp(-dt/2 * K) (precomputed outside this function).
-        //   - `diagExpV`: Diagonal matrix for the potential term.
-        B = expK * diagExpV * expK;
-    } else {
-        // Asymmetric Trotter decomposition:
-        //   B = exp(-dt * K) * diag(expV)
-        //   - `expmKmat`: Represents exp(-dt * K).
-        //   - `diagExpV`: Diagonal matrix for the potential term.
-        B = expK * diagExpV;
-    }
-
-    // Step 4: Return the computed B-matrix.
-    return B;
 }
 
 std::tuple<double, double> update_ratio_hubbard(double G_ii, double s_il, double alpha, double sgn) {
@@ -298,30 +335,31 @@ std::tuple<double, double> update_ratio_hubbard(double G_ii, double s_il, double
 }
 
 void propagate_equaltime_greens(
-    arma::mat& G,                  // Green's function matrix (NxN), updated in place
-    std::vector<arma::mat>& B,     // Vector of propagator matrices (NxN for each time slice)
-    arma::mat expK,                // Exponential of the kinetic matrix (NxN)
-    arma::mat expV,                // Matrix representing the exponential of the on-site energy (NxL)
-    int l                          // Current time slice index
+    arma::mat& G,         // Green's function matrix (NxN), updated in place
+    arma::mat& expK,      
+    arma::mat& expV,
+    int l,
+    bool is_symmetric,
+    bool forward
 ) {
     // Step 1: Retrieve the propagator matrix for time slice l (B_{l+1}).
     //         Ensure l+1 is valid in your calling code to avoid accessing invalid indices.
-    arma::mat B_l = B[l];
+    arma::mat B_l = calculate_B_matrix(expK, expV, l, is_symmetric);
 
     // Step 2: Compute the inverse of B_{l+1}. This is used to propagate G forward.
     arma::mat inv_B_l = inv(B_l);
 
-    // Step 3: Extract the diagonal matrix from the exponential of the on-site energy for the current time slice l.
-    arma::mat diag_expV = arma::diagmat(expV.col(l));
-
     // Step 4: Update G by performing the propagation: 
     //         G <- B_{l+1} * G * B_{l+1}^{-1}.
     //         This method assumes you have correctly constructed the B matrices from expK and expV.
-    G = B_l * G * inv_B_l;
-
-    // Note: The commented-out line uses expK and diag(expV) directly for propagation:
-    //       G = expK * diag_expV * G * diag_expV * inv(expK);
-    //       Uncomment this if you want to propagate using kinetic and potential factors directly instead of B matrices.
+    if (forward)
+    {
+        G = B_l * G * inv_B_l;
+    } 
+    else
+    {
+        G = inv_B_l * G * B_l;
+    }
 }
 
 
