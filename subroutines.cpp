@@ -336,7 +336,7 @@ std::tuple<double, double> update_ratio_hubbard(double G_ii, double s_il, double
 
 void propagate_equaltime_greens(
     arma::mat& G,         // Green's function matrix (NxN), updated in place
-    arma::mat& expK,      
+    const arma::mat& expK,      
     arma::mat& expV,
     int l,
     bool is_symmetric,
@@ -404,6 +404,88 @@ void local_update_greens(
 
     // Step 4: Update the diagonal on-site energy expV
     expV(i,l) = expV(i,l) * (1.0 + delta);
+}
+
+void sweep_time_slices(
+    arma::mat& Gup, arma::mat& Gdn, 
+    arma::mat& expVup, arma::mat& expVdn, 
+    const arma::mat& expK, const arma::mat& inv_expK, 
+    arma::Mat<int>& s, double alpha, 
+    int L_tau, int N, int nwrap, int nstab, 
+    bool is_symmetric, 
+    std::mt19937& rng, std::uniform_real_distribution<double>& dis, 
+    double& acceptance_rate
+) {
+
+    int accepted = 0;
+    for (int l = 0; l < L_tau; l++) {
+        // propagate Green function locally
+        propagate_equaltime_greens(Gup, expK, expVup, l, is_symmetric, true);
+        propagate_equaltime_greens(Gdn, expK, expVdn, l, is_symmetric, true);
+
+        // Symmetric warp if enabled
+        if (is_symmetric) {
+            symmmetric_warp_greens(Gup, expK, inv_expK, true);
+            symmmetric_warp_greens(Gdn, expK, inv_expK, true);
+        }
+
+        // Shuffle the sites
+        std::vector<int> shuffled_sites = shuffle_numbers(s.n_rows, rng);
+
+        for (int& site : shuffled_sites) {
+            // Update ratio for spin-up and spin-down
+            double Gup_ii = Gup(site, site);
+            double Gdn_ii = Gdn(site, site);
+            double s_il = s(site, l);
+
+            auto [ratio_up, delta_up] = update_ratio_hubbard(Gup_ii, s_il, alpha, 1);
+            auto [ratio_dn, delta_dn] = update_ratio_hubbard(Gdn_ii, s_il, alpha, -1);
+
+            // Calculate probability
+            double prob = std::abs(ratio_up * ratio_dn);
+
+            if (dis(rng) < prob) {
+                // Increment accepted counter
+                accepted += 1;
+
+                // Flip the Ising configuration
+                s(site, l) = -s_il;
+
+                // Update Green's functions locally
+                local_update_greens(Gup, expVup, ratio_up, delta_up, site, l);
+                local_update_greens(Gdn, expVdn, ratio_dn, delta_dn, site, l);
+            }
+        }
+
+        // Symmetric warp reverse if enabled
+        if (is_symmetric) {
+            symmmetric_warp_greens(Gup, expK, inv_expK, false);
+            symmmetric_warp_greens(Gdn, expK, inv_expK, false);
+        }
+
+        // Propagate Green's functions for the next time slice
+        if (l % nstab == 0) {
+            // Calculate G(tau, tau) from scratch
+
+            // Shift expVup and expVdn to align with the current slice
+            arma::mat expVup_shifted = shiftMatrixColumnsLeft(expVup, l + 1);
+            arma::mat expVdn_shifted = shiftMatrixColumnsLeft(expVdn, l + 1);
+
+            // Wrap into Bup and Bdn = B(tau,0)B(beta,0)
+            LDRMatrix Bup = wrap_B_matrices(expK, expVup_shifted, nwrap, is_symmetric);
+            LDRMatrix Bdn = wrap_B_matrices(expK, expVdn_shifted, nwrap, is_symmetric);
+
+            // Recalculate G_eq
+            auto [new_Gup, signdetGup] = calculate_invIpA(Bup);
+            auto [new_Gdn, signdetGdn] = calculate_invIpA(Bdn);
+
+            Gup = new_Gup;
+            Gdn = new_Gdn;
+        }
+    }
+    
+    // Calculate acceptance rate
+    acceptance_rate += static_cast<double>(accepted) / N / L_tau;
 }
 
 // END OF MODEL SUBROUTINE //

@@ -16,11 +16,11 @@ int main() {
     std::cout << "nearest neighbor hopping: " << t << std::endl;
 
     // chemical potential term
-    double mu = -0.4;
+    double mu = 0.0;
     std::cout << "chemical potential: " << mu << std::endl;
 
     // Local U interaction term
-    double U = 2.0;
+    double U = 10.0;
     std::cout << "local interaction U: " << U << std::endl;
 
     // inverse temperature
@@ -28,7 +28,7 @@ int main() {
     std::cout << "inverse temperature: " << beta << std::endl;
 
     // trotter discretization imaginary time
-    double delta_tau = 0.1;
+    double delta_tau = 0.02;
     std::cout << "trotter discretization imaginary time: " << delta_tau << std::endl; 
 
     // length of imaginary time
@@ -48,6 +48,18 @@ int main() {
     // number of time slice before recalculalting G_eq from scratch
     int nstab = 5;
     std::cout << "number of time slice before recalculating G_eq from scratch: " << nstab << std::endl;
+
+    // number of nsweep
+    int nsweep_measure = 100;
+    std:: cout << "number of sweep for monte carlo measurements: " << nsweep_measure << std::endl;
+
+    // number of thermalization
+    int nsweep_thermal = 200;
+    std:: cout << "number of sweep for monte carlo thermalization:" << nsweep_thermal << std::endl;
+
+    // number of bins
+    int nbins = 20;
+    std::cout << "number of bins for measuremetns: " << nbins << std::endl;
 
     // symmetric trotter discretization or not
     bool is_symmetric = true;
@@ -103,77 +115,70 @@ int main() {
 
     double acceptance_rate = 0.0;
 
-    for (int l = 0; l < L_tau; l++){
-        // propagate forward to G_eq(\tau,\tau)
-        propagate_equaltime_greens(Gup, expK, expVup, l, is_symmetric, true);
-        propagate_equaltime_greens(Gdn, expK, expVdn, l, is_symmetric, true);
+    // do thermalization first
+    std::cout << "thermalization process ..." << std::endl;
+    for (int is = 0; is < nsweep_thermal; is++)
+    {
+        sweep_time_slices(
+                Gup, Gdn, 
+                expVup, expVdn, 
+                expK, inv_expK, 
+                s, alpha, 
+                L_tau, N, nwrap, nstab, 
+                is_symmetric, 
+                rng, dis, 
+                acceptance_rate
+            );
 
-        // if symmetric warp
-        if (is_symmetric)
+        double nn = 0.0;        
+        for (int i = 0; i < N; i++)
         {
-            symmmetric_warp_greens(Gup, expK, inv_expK, true);
-            symmmetric_warp_greens(Gdn, expK, inv_expK, true);
+            nn += (1.0 - Gup(i,i)) * (1.0 - Gdn(i,i));
         }
-
-        // shuffle the sites
-        std::vector<int> shuffled_sites = shuffle_numbers(s.n_rows, rng);
-
-        int accepted = 0;
-        for (int& site : shuffled_sites){
-            // update ratio r_up r_dn
-            double Gup_ii = Gup(site, site);
-            double Gdn_ii = Gdn(site, site);
-            double s_il = s(site,l);
-
-            auto [ratio_up, delta_up] = update_ratio_hubbard(Gup_ii, s_il, alpha, spin_up);
-            auto [ratio_dn, delta_dn] = update_ratio_hubbard(Gdn_ii, s_il, alpha, spin_dn);
-
-            // probabiility
-            double prob = abs(ratio_up * ratio_dn);
-
-            if (dis(gen) < prob){
-                // add n_site accepted counter
-                accepted += 1;
-
-                // flip the ising configuration
-                s(site, l) = -s_il;
-
-                // update green's function locally
-                local_update_greens(Gup, expVup, ratio_up, delta_up, site, l);
-                local_update_greens(Gdn, expVdn, ratio_dn, delta_dn, site, l);
-            }
-            
-        }
-
-        // acceptance rate total += n_site_accepted / N
-        acceptance_rate = static_cast<double>(accepted) / N;
-
-        // if symmetric warp reverse
-        if (is_symmetric)
-        {
-            symmmetric_warp_greens(Gup, expK, inv_expK, false);
-            symmmetric_warp_greens(Gdn, expK, inv_expK, false);
-        }
-
-        // recalculate Green's function for stability
-        if (l % nstab == 0)
-        {
-            // calculate G(tau, tau) from scratch
-
-            // shift the expVup and expVdn so the order of B(\tau,0)B(\beta,0) is correct
-            arma::mat expVup_shifted = shiftMatrixColumnsLeft(expVup, l + 1);
-            arma::mat expVdn_shifted = shiftMatrixColumnsLeft(expVdn, l + 1);
-
-            // wrap into Bup and Bdn = B(\tau,0)B(\beta,0)
-            LDRMatrix Bup = wrap_B_matrices(expK, expVup_shifted, nwrap, is_symmetric);
-            LDRMatrix Bdn = wrap_B_matrices(expK, expVdn_shifted, nwrap, is_symmetric);
-
-            // calculate G_eq
-            auto [Gup, signdetGup] = calculate_invIpA(Bup);
-            auto [Gdn, signdetGdn] = calculate_invIpA(Bdn);
-        }
+        std::cout << nn / N << std::endl;
         
     }
+
+    // // initialize measurement_bin
+    // arma::vec meas_kinetic_energy = arma::vec(nbins, arma::fill::zeros); // size = Nbin
+
+    // for (int ib = 0; ib < nbins; ib++)
+    // {  
+    //     std::cout << "measurement process start for bin = " << ib << std::endl;
+
+    //     // initialize measurement for sweep
+    //     // set to zeros
+    //     double meas_kinetic_energy_ = 0.0;
+
+    //     for (int is = 0; is < nsweep_measure; is++)
+    //     {
+    //         sweep_time_slices(
+    //             Gup, Gdn, 
+    //             expVup, expVdn, 
+    //             expK, inv_expK, 
+    //             s, alpha, 
+    //             L_tau, N, nwrap, nstab, 
+    //             is_symmetric, 
+    //             rng, dis, 
+    //             acceptance_rate
+    //         );
+
+    //         if (is >= nsweep_thermal)
+    //         {
+    //             // measure equal time
+    //             meas_kinetic_energy_ = Gup(1,2);
+
+    //             // collect measurement into bin
+    //             meas_kinetic_energy(ib) += meas_kinetic_energy_ / N;
+    //         }
+    //     }
+
+    //     meas_kinetic_energy(ib) += meas_kinetic_energy_ / nsweep_measure;
+    //     std::cout << "  the measured kinetic energy is = " << meas_kinetic_energy(ib) << std::endl;
+    // }
+
+    acceptance_rate = acceptance_rate / (nsweep_thermal + nsweep_measure * nbins);
+
 
     return 0;
 }

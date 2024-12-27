@@ -41,7 +41,7 @@ std::tuple<double, double> update_ratio_hubbard(double G_ii, double s_il, double
 
 void propagate_equaltime_greens(
     arma::mat& G,
-    arma::mat& expK,
+    const arma::mat& expK,
     arma::mat& expV,
     int l,
     bool is_symmetric,
@@ -62,6 +62,17 @@ void local_update_greens(
     double delta,
     int i,
     int l
+);
+
+void sweep_time_slices(
+    arma::mat& Gup, arma::mat& Gdn, 
+    arma::mat& expVup, arma::mat& expVdn, 
+    const arma::mat& expK, const arma::mat& inv_expK, 
+    arma::Mat<int>& s, double alpha, 
+    int L_tau, int N, int nwrap, int nstab, 
+    bool is_symmetric, 
+    std::mt19937& rng, std::uniform_real_distribution<double>& dis, 
+    double& acceptance_rate
 );
 
 #endif // SUBROUTINES_H

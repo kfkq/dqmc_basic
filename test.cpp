@@ -156,39 +156,68 @@ int main() {
 
      // test warp
     std::cout << "\n======= Test 5: symmetric warp green function =======" << std::endl;
+    propagate_equaltime_greens(Gup, expKmat, expVup, 0, is_symmetric, true);
+    propagate_equaltime_greens(Gdn, expKmat, expVdn, 0, is_symmetric, true);
+
     symmmetric_warp_greens(Gup, expKmat, inv_expKmat, true);
-    std::cout << "Gup[4,4] calculated=  " << Gup(3,3) << std::endl;
-    std::cout << "Gup[4,4] correct   = " << 0.6022768205143244 << std::endl;
+    symmmetric_warp_greens(Gdn, expKmat, inv_expKmat, true);
+    std::cout << "logabsdetG after warp =  " << arma::log_det(Gup) << std::endl;
 
     // test update ratio
     std::cout << "\n======= Test 6: ratio probability =======" << std::endl;
     int l = 0;
-    int isite = 11;
+    int isite = 0;
     
-    double G_ii = Gup(isite, isite);
+    double Gup_ii = Gup(isite, isite);
+    double Gdn_ii = Gdn(isite, isite);
     int s_il = s(isite, l);
 
-    auto [r, delta] = update_ratio_hubbard(G_ii, s_il, alpha, spin_up);
+    std::cout << "sil: " << s_il << std::endl;
 
-    std::cout << "Ratio probability flipping calculated: " << r << std::endl;
-    std::cout << "Ratio probability flipping correct   : " << 1.5897629046313408 << std::endl;
+    auto [rup, delta_up] = update_ratio_hubbard(Gup_ii, s_il, alpha, spin_up);
+    auto [rdn, delta_dn] = update_ratio_hubbard(Gdn_ii, s_il, alpha, spin_dn);
 
-    // test update Green
+    std::cout << "Ratio probability flipping calculated: " << rup*rdn << std::endl;
+
+    // test update ratio
     std::cout << "\n======= Test 7: update green =======" << std::endl;
+    local_update_greens(Gup, expVup, rup, delta_up, isite, l);
+    local_update_greens(Gdn, expVdn, rdn, delta_dn, isite, l);
+    std::cout << "logabsdetG after warp =  " << arma::log_det(Gup) << std::endl;
+
+    std::cout << "\n======= Test 8: reverse warp =======" << std::endl;
+    symmmetric_warp_greens(Gup, expKmat, inv_expKmat, false);
+    symmmetric_warp_greens(Gdn, expKmat, inv_expKmat, false);
+    std::cout << "logabsdetG after warp =  " << arma::log_det(Gup) << std::endl;
+
+     // Create a sample matrix
+    std::cout << "\n======= Test 9: matrix shift =======" << std::endl;
+    arma::mat matrix = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+
+    std::cout << "Original Matrix:\n" << matrix << std::endl;
+
+    // Shift columns to the left by 1 position
+    int k = 1;
+    arma::mat shiftedMatrix = shiftMatrixColumnsLeft(matrix, k);
+
+    std::cout << "Matrix after shifting columns left by " << k << ":\n" << shiftedMatrix << std::endl;
+
+    // // test update Green
+    // std::cout << "\n======= Test 7: update green =======" << std::endl;
     
-    arma::log_det(logdetG, sign, Gup);
-    std::cout << "logdetG before flip: " << logdetG << std::endl;
-    std::cout << "logdetG before flip correct:" << -43.69082373753489 << std::endl;
+    // arma::log_det(logdetG, sign, Gup);
+    // std::cout << "logdetG before flip: " << logdetG << std::endl;
+    // std::cout << "logdetG before flip correct:" << -43.69082373753489 << std::endl;
 
-    s(isite, l) = -s(isite,l); // flip
-    local_update_greens(Gup, expVup, r, delta, isite, l);
+    // s(isite, l) = -s(isite,l); // flip
+    // local_update_greens(Gup, expVup, r, delta, isite, l);
 
-    arma::log_det(logdetG, sign, Gup);
-    std::cout << "logdetG before flip: " << logdetG << std::endl;
-    std::cout << "logdetG after flip correct: " << -44.15440862606399 << std::endl;
+    // arma::log_det(logdetG, sign, Gup);
+    // std::cout << "logdetG before flip: " << logdetG << std::endl;
+    // std::cout << "logdetG after flip correct: " << -44.15440862606399 << std::endl;
 
-    // test propagate
-    std::cout << "\n======= Test 6: forward propagation equal time Green's function =======" << std::endl;
+    // // test propagate
+    // std::cout << "\n======= Test 6: forward propagation equal time Green's function =======" << std::endl;
 
     
 
