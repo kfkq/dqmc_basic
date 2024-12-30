@@ -1,4 +1,5 @@
 #include "subroutines.h"
+#include <mkl.h> // Include MKL header
 
 // ------------------------------------------------------
 // LINEAR ALGEBRA SUBROUTINE
@@ -389,19 +390,28 @@ void local_update_greens(
     double r,                  // Determinant ratio
     double delta,              // Change in on-site energy
     int i,                     // Site index being updated
-    int l,
-    arma::vec u,
-    arma::vec v
+    int l
 ) {
+    // Step 1: Extract column G(:, i) into u
+    arma::vec u = G.col(i);
 
     // Step 2: Extract row G(i, :) into v and subtract identity row
-    v(i) = v(i) - 1.0;       // Subtract the identity term for v(i)
+    arma::vec v = G.row(i).t();  // Transpose to match the vector orientation
+    v(i) = v(i) - 1.0;           // Subtract the identity term for v(i)
 
-    // Step 3: Perform the rank-1 update G = G + (Δ/R) * u * v.t()
-    G += (delta / r) * (u * v.t());
+    // Step 3: Perform the rank-1 update G = G + (Δ/R) * u * v.t() using MKL dger
+    double alpha = delta / r;
+    int m = G.n_rows; // Number of rows in G
+    int n = G.n_cols; // Number of columns in G
+    int incx = 1;     // Stride for vector x (u)
+    int incy = 1;     // Stride for vector y (v)
+    double* A = G.memptr(); // Pointer to the matrix data
+    int lda = m;      // Leading dimension of A (number of rows)
+
+    cblas_dger(CblasColMajor, m, n, alpha, u.memptr(), incx, v.memptr(), incy, A, lda);
 
     // Step 4: Update the diagonal on-site energy expV
-    expV(i,l) = expV(i,l) * (1.0 + delta);
+    expV(i, l) = expV(i, l) * (1.0 + delta);
 }
 
 void sweep_time_slices(
