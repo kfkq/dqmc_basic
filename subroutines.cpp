@@ -488,4 +488,60 @@ void sweep_time_slices(
     acceptance_rate += static_cast<double>(accepted) / N / L_tau;
 }
 
+// Measurement functions
+double measure_double_occupancy(const arma::mat& Gup, const arma::mat& Gdn) {
+    int N = Gup.n_rows; // Number of sites
+    double D = 0.0;
+
+    for (int i = 0; i < N; ++i) {
+        D += (1.0 - Gup(i, i)) * (1.0 - Gdn(i, i));
+    }
+
+    return D / N; // Average double occupancy per site
+}
+
+double measure_kinetic_energy(const arma::mat& Gup, const arma::mat& Gdn, double t, int L) {
+    int N = L * L; // Total number of sites
+    double E_kin = 0.0;
+
+    for (int x = 0; x < L; ++x) {
+        for (int y = 0; y < L; ++y) {
+            int site = x * L + y;
+
+            // +x neighbor
+            int x_neighbor = ((x + 1) % L) * L + y;
+            E_kin += -t * (Gup(site, x_neighbor) + Gdn(site, x_neighbor));
+
+            // +y neighbor
+            int y_neighbor = x * L + (y + 1) % L;
+            E_kin += -t * (Gup(site, y_neighbor) + Gdn(site, y_neighbor));
+        }
+    }
+
+    return E_kin;
+}
+
+double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, double U) {
+    int N = Gup.n_rows; // Number of sites
+    double E_pot = 0.0;
+
+    for (int i = 0; i < N; ++i) {
+        E_pot += U * (1.0 - Gup(i, i)) * (1.0 - Gdn(i, i));
+    }
+
+    return E_pot;
+}
+
+// Statistics computation function
+std::pair<double, double> compute_stats(const std::vector<double>& data) {
+    double sum = std::accumulate(data.begin(), data.end(), 0.0);
+    double mean = sum / data.size();
+
+    double sq_sum = std::inner_product(data.begin(), data.end(), data.begin(), 0.0);
+    double stdev = std::sqrt(sq_sum / data.size() - mean * mean);
+    double stderr = stdev / std::sqrt(data.size());
+
+    return {mean, stderr};
+}
+
 // END OF MODEL SUBROUTINE //

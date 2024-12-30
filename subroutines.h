@@ -5,6 +5,8 @@
 #include <vector>
 #include <random>
 #include <armadillo>
+#include <numeric> // For std::accumulate and std::inner_product
+#include <cmath>   // For std::sqrt
 
 // Struct for LDR representation
 struct LDRMatrix {
@@ -74,5 +76,13 @@ void sweep_time_slices(
     std::mt19937& rng, std::uniform_real_distribution<double>& dis, 
     double& acceptance_rate
 );
+
+// Measurement functions
+double measure_double_occupancy(const arma::mat& Gup, const arma::mat& Gdn);
+double measure_kinetic_energy(const arma::mat& Gup, const arma::mat& Gdn, double t, int L);
+double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, double U);
+
+// Statistics computation function
+std::pair<double, double> compute_stats(const std::vector<double>& data);
 
 #endif // SUBROUTINES_H

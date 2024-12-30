@@ -139,43 +139,63 @@ int main() {
         
     }
 
-    // // initialize measurement_bin
-    // arma::vec meas_kinetic_energy = arma::vec(nbins, arma::fill::zeros); // size = Nbin
+    // Open files for each measurement
+    std::ofstream outfile_D("double_occupancy.txt");
+    std::ofstream outfile_Ekin("kinetic_energy.txt");
+    std::ofstream outfile_Epot("potential_energy.txt");
 
-    // for (int ib = 0; ib < nbins; ib++)
-    // {  
-    //     std::cout << "measurement process start for bin = " << ib << std::endl;
+    if (!outfile_D.is_open() || !outfile_Ekin.is_open() || !outfile_Epot.is_open()) {
+        std::cerr << "Error: Could not open measurement files for writing." << std::endl;
+        return 1;
+    }
 
-    //     // initialize measurement for sweep
-    //     // set to zeros
-    //     double meas_kinetic_energy_ = 0.0;
+    // Write headers to the files
+    outfile_D << "Bin\tAverage\tStandard_Error\n";
+    outfile_Ekin << "Bin\tAverage\tStandard_Error\n";
+    outfile_Epot << "Bin\tAverage\tStandard_Error\n";
 
-    //     for (int is = 0; is < nsweep_measure; is++)
-    //     {
-    //         sweep_time_slices(
-    //             Gup, Gdn, 
-    //             expVup, expVdn, 
-    //             expK, inv_expK, 
-    //             s, alpha, 
-    //             L_tau, N, nwrap, nstab, 
-    //             is_symmetric, 
-    //             rng, dis, 
-    //             acceptance_rate
-    //         );
+    // Measurement loop
+    for (int ib = 0; ib < nbins; ib++) {
+        std::vector<double> D_measurements; // Store double occupancy measurements
+        std::vector<double> E_kin_measurements; // Store kinetic energy measurements
+        std::vector<double> E_pot_measurements; // Store potential energy measurements
 
-    //         if (is >= nsweep_thermal)
-    //         {
-    //             // measure equal time
-    //             meas_kinetic_energy_ = Gup(1,2);
+        // Perform measurements for each sweep in this bin
+        for (int is = 0; is < nsweep_measure; is++) {
+            sweep_time_slices(
+                Gup, Gdn, 
+                expVup, expVdn, 
+                expK, inv_expK, 
+                s, alpha, 
+                L_tau, N, nwrap, nstab, 
+                is_symmetric, 
+                rng, dis, 
+                acceptance_rate
+            );
 
-    //             // collect measurement into bin
-    //             meas_kinetic_energy(ib) += meas_kinetic_energy_ / N;
-    //         }
-    //     }
+            // Collect measurements
+            D_measurements.push_back(measure_double_occupancy(Gup, Gdn));
+            E_kin_measurements.push_back(measure_kinetic_energy(Gup, Gdn, t, L));
+            E_pot_measurements.push_back(measure_potential_energy(Gup, Gdn, U));
+        }
 
-    //     meas_kinetic_energy(ib) += meas_kinetic_energy_ / nsweep_measure;
-    //     std::cout << "  the measured kinetic energy is = " << meas_kinetic_energy(ib) << std::endl;
-    // }
+        // Compute statistics for each measurement
+        auto [D_avg, D_err] = compute_stats(D_measurements);
+        auto [E_kin_avg, E_kin_err] = compute_stats(E_kin_measurements);
+        auto [E_pot_avg, E_pot_err] = compute_stats(E_pot_measurements);
+
+        // Write results to respective files
+        outfile_D << ib << "\t" << D_avg << "\t" << D_err << "\n";
+        outfile_Ekin << ib << "\t" << E_kin_avg << "\t" << E_kin_err << "\n";
+        outfile_Epot << ib << "\t" << E_pot_avg << "\t" << E_pot_err << "\n";
+
+        std::cout << "Bin " << ib << " completed." << std::endl;
+    }
+
+    // Close the files
+    outfile_D.close();
+    outfile_Ekin.close();
+    outfile_Epot.close();
 
     acceptance_rate = acceptance_rate / (nsweep_thermal + nsweep_measure * nbins);
 
