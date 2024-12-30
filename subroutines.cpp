@@ -389,14 +389,12 @@ void local_update_greens(
     double r,                  // Determinant ratio
     double delta,              // Change in on-site energy
     int i,                     // Site index being updated
-    int l
+    int l,
+    arma::vec u,
+    arma::vec v
 ) {
 
-    // Step 1: Extract column G(:, i) into u
-    arma::vec u = G.col(i);
-
     // Step 2: Extract row G(i, :) into v and subtract identity row
-    arma::vec v = G.row(i).t();  // Transpose to match the vector orientation
     v(i) = v(i) - 1.0;       // Subtract the identity term for v(i)
 
     // Step 3: Perform the rank-1 update G = G + (Δ/R) * u * v.t()
@@ -416,6 +414,9 @@ void sweep_time_slices(
     std::mt19937& rng, std::uniform_real_distribution<double>& dis, 
     double& acceptance_rate
 ) {
+
+    arma::vec u(N);
+    arma::vec v(N);
 
     int accepted = 0;
     for (int l = 0; l < L_tau; l++) {
@@ -452,8 +453,8 @@ void sweep_time_slices(
                 s(site, l) = -s_il;
 
                 // Update Green's functions locally
-                local_update_greens(Gup, expVup, ratio_up, delta_up, site, l);
-                local_update_greens(Gdn, expVdn, ratio_dn, delta_dn, site, l);
+                local_update_greens(Gup, expVup, ratio_up, delta_up, site, l, u, v);
+                local_update_greens(Gdn, expVdn, ratio_dn, delta_dn, site, l, u, v);
             }
         }
 
