@@ -1,0 +1,13 @@
+t = 1.0
+mu = 0.0
+U = 2.0
+beta = 8.0
+delta_tau = 0.1
+L = 4
+nwrap = 8
+nstab = 5
+nsweep_measure = 100
+nsweep_thermal = 500
+nbins = 100
+is_symmetric = true
+is_forward = true

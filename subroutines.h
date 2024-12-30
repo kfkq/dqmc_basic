@@ -85,4 +85,12 @@ double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, doub
 // Statistics computation function
 std::pair<double, double> compute_stats(const std::vector<double>& data);
 
+// Function to read input parameters from a file
+void read_input_parameters(
+    const std::string& filename,
+    double& t, double& mu, double& U, double& beta, double& delta_tau,
+    int& L, int& nwrap, int& nstab, int& nsweep_measure, int& nsweep_thermal, int& nbins,
+    bool& is_symmetric, bool& is_forward
+);
+
 #endif // SUBROUTINES_H

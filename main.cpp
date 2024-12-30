@@ -11,63 +11,47 @@ int main() {
     std::mt19937 rng(rd());
     std::uniform_real_distribution<> dis(0.0, 1.0);
 
-    // Nearest neighbor hopping term
-    double t = 1.0;
-    std::cout << "nearest neighbor hopping: " << t << std::endl;
+    // Declare variables for input parameters
+    double t, mu, U, beta, delta_tau;
+    int L, nwrap, nstab, nsweep_measure, nsweep_thermal, nbins;
+    bool is_symmetric, is_forward;
 
-    // chemical potential term
-    double mu = 0.0;
-    std::cout << "chemical potential: " << mu << std::endl;
+    // Read input parameters from file
+    try {
+        read_input_parameters(
+            "input_dqmc.in", 
+            t, mu, U, beta, delta_tau, 
+            L, nwrap, nstab, nsweep_measure, nsweep_thermal, nbins, 
+            is_symmetric, is_forward
+        );
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
 
-    // Local U interaction term
-    double U = 2.0;
-    std::cout << "local interaction U: " << U << std::endl;
-
-    // inverse temperature
-    double beta = 8.0;
-    std::cout << "inverse temperature: " << beta << std::endl;
-
-    // trotter discretization imaginary time
-    double delta_tau = 0.1;
-    std::cout << "trotter discretization imaginary time: " << delta_tau << std::endl; 
+    // Print input parameters
+    std::cout << "Input parameters:" << std::endl;
+    std::cout << "t = " << t << std::endl;
+    std::cout << "mu = " << mu << std::endl;
+    std::cout << "U = " << U << std::endl;
+    std::cout << "beta = " << beta << std::endl;
+    std::cout << "delta_tau = " << delta_tau << std::endl;
+    std::cout << "L = " << L << std::endl;
+    std::cout << "nwrap = " << nwrap << std::endl;
+    std::cout << "nstab = " << nstab << std::endl;
+    std::cout << "nsweep_measure = " << nsweep_measure << std::endl;
+    std::cout << "nsweep_thermal = " << nsweep_thermal << std::endl;
+    std::cout << "nbins = " << nbins << std::endl;
+    std::cout << "is_symmetric = " << std::boolalpha << is_symmetric << std::endl;
+    std::cout << "is_forward = " << std::boolalpha << is_forward << std::endl;
 
     // length of imaginary time
     int L_tau = beta / delta_tau;
     std::cout << "length of imaginary time: " << L_tau << std::endl;
 
-    // length size of square lattice
-    int L = 4;
+    // total sites of square lattice
     int N = L * L;
     std::cout << "total sites of square lattice: " << N << std::endl;
-
-    // number of matrix wrap for stabilization
-    // the lower the better but high cost
-    int nwrap = 8;
-    std::cout << "number of matrix wrap for stabilization: " << nwrap << std::endl;
-
-    // number of time slice before recalculalting G_eq from scratch
-    int nstab = 5;
-    std::cout << "number of time slice before recalculating G_eq from scratch: " << nstab << std::endl;
-
-    // number of nsweep
-    int nsweep_measure = 100;
-    std:: cout << "number of sweep for monte carlo measurements: " << nsweep_measure << std::endl;
-
-    // number of thermalization
-    int nsweep_thermal = 500;
-    std:: cout << "number of sweep for monte carlo thermalization:" << nsweep_thermal << std::endl;
-
-    // number of bins
-    int nbins = 100;
-    std::cout << "number of bins for measuremetns: " << nbins << std::endl;
-
-    // symmetric trotter discretization or not
-    bool is_symmetric = true;
-    std::cout << "symmetric decomposition: " << is_symmetric << std::endl;
-
-    // forward propagation or not
-    bool is_forward = true;
-    std::cout << "forward propagation: " << is_forward << std::endl;
 
     if (is_symmetric)
     {

@@ -544,4 +544,41 @@ std::pair<double, double> compute_stats(const std::vector<double>& data) {
     return {mean, stderr};
 }
 
+// Function to read input parameters from a file
+void read_input_parameters(
+    const std::string& filename,
+    double& t, double& mu, double& U, double& beta, double& delta_tau,
+    int& L, int& nwrap, int& nstab, int& nsweep_measure, int& nsweep_thermal, int& nbins,
+    bool& is_symmetric, bool& is_forward
+) {
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        throw std::runtime_error("Error: Could not open input file " + filename);
+    }
+
+    std::string line;
+    while (std::getline(infile, line)) {
+        std::istringstream iss(line);
+        std::string key;
+        if (line.find('=') != std::string::npos) {
+            iss >> key;
+            if (key == "t") iss.ignore(3) >> t;
+            else if (key == "mu") iss.ignore(3) >> mu;
+            else if (key == "U") iss.ignore(3) >> U;
+            else if (key == "beta") iss.ignore(3) >> beta;
+            else if (key == "delta_tau") iss.ignore(3) >> delta_tau;
+            else if (key == "L") iss.ignore(3) >> L;
+            else if (key == "nwrap") iss.ignore(3) >> nwrap;
+            else if (key == "nstab") iss.ignore(3) >> nstab;
+            else if (key == "nsweep_measure") iss.ignore(3) >> nsweep_measure;
+            else if (key == "nsweep_thermal") iss.ignore(3) >> nsweep_thermal;
+            else if (key == "nbins") iss.ignore(3) >> nbins;
+            else if (key == "is_symmetric") iss.ignore(3) >> std::boolalpha >> is_symmetric;
+            else if (key == "is_forward") iss.ignore(3) >> std::boolalpha >> is_forward;
+        }
+    }
+
+    infile.close();
+}
+
 // END OF MODEL SUBROUTINE //
