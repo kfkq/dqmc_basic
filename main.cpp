@@ -20,15 +20,15 @@ int main() {
     std::cout << "chemical potential: " << mu << std::endl;
 
     // Local U interaction term
-    double U = 10.0;
+    double U = 2.0;
     std::cout << "local interaction U: " << U << std::endl;
 
     // inverse temperature
-    double beta = 4.0;
+    double beta = 8.0;
     std::cout << "inverse temperature: " << beta << std::endl;
 
     // trotter discretization imaginary time
-    double delta_tau = 0.02;
+    double delta_tau = 0.1;
     std::cout << "trotter discretization imaginary time: " << delta_tau << std::endl; 
 
     // length of imaginary time
@@ -54,11 +54,11 @@ int main() {
     std:: cout << "number of sweep for monte carlo measurements: " << nsweep_measure << std::endl;
 
     // number of thermalization
-    int nsweep_thermal = 200;
+    int nsweep_thermal = 500;
     std:: cout << "number of sweep for monte carlo thermalization:" << nsweep_thermal << std::endl;
 
     // number of bins
-    int nbins = 20;
+    int nbins = 100;
     std::cout << "number of bins for measuremetns: " << nbins << std::endl;
 
     // symmetric trotter discretization or not
@@ -129,14 +129,6 @@ int main() {
                 rng, dis, 
                 acceptance_rate
             );
-
-        double nn = 0.0;        
-        for (int i = 0; i < N; i++)
-        {
-            nn += (1.0 - Gup(i,i)) * (1.0 - Gdn(i,i));
-        }
-        std::cout << nn / N << std::endl;
-        
     }
 
     // Open files for each measurement

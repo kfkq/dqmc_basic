@@ -518,7 +518,7 @@ double measure_kinetic_energy(const arma::mat& Gup, const arma::mat& Gdn, double
         }
     }
 
-    return E_kin;
+    return 2.0 * E_kin;
 }
 
 double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, double U) {
