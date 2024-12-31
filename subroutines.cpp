@@ -204,6 +204,58 @@ LDRMatrix wrap_B_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, boo
     return Bwrap;
 }
 
+std::vector<LDRMatrix> init_F_matrices(
+    const arma::mat& expK, 
+    arma::mat& expV, 
+    int Nwrap, 
+    bool is_symmetric) {
+    
+    int L = expV.n_cols; // Total number of matrices
+    if (L % Nwrap != 0) {
+        // Ensure the total number of matrices L is divisible by Nwrap.
+        throw std::invalid_argument("L (number of matrices) must be divisible by Nwrap.");
+    }
+
+    int nsize = expV.n_rows; // Size of the square matrices (assumes consistent dimensions)
+    int num_groups = L / Nwrap;      // Number of groups formed by Nwrap
+
+    arma::mat B_l;
+    // Step 1: Compute the product of each group.
+    std::vector<arma::mat> Bgroup(num_groups);
+    for (int i = 0; i < num_groups; ++i) {
+        arma::mat B_dum = arma::eye<arma::mat>(nsize, nsize); // Start with an identity matrix
+        for (int j = 0; j < Nwrap; ++j) {
+            // Multiply matrices in the current group: B_dum = B_{i * Nwrap} * ... * B_{i * Nwrap + Nwrap-1}
+            B_l = calculate_B_matrix(expK, expV, i*Nwrap+j, is_symmetric);
+            B_dum = B_l * B_dum;
+        }
+        Bgroup[i] = B_dum; // Store the product for this group
+    }
+
+    std::vector<LDRMatrix> F_matrices;
+    for (int i = 0; i < num_groups; ++i) {
+        LDRMatrix F_mat;
+        F_mat.L = arma::eye<arma::mat>(nsize, nsize); 
+        F_mat.D = arma::ones<arma::vec>(nsize);      
+        F_mat.R = arma::eye<arma::mat>(nsize, nsize); 
+
+        for (int j = i; j < num_groups; ++j) {
+            arma::mat M = Bgroup[j] * F_mat.L; 
+            for (size_t k = 0; k < M.n_cols; ++k) {
+                cblas_dscal(M.n_rows, F_mat.D(k), M.colptr(k), 1);
+            }
+            LDRMatrix M_LDR = qr_LDR(M);
+            F_mat.L = M_LDR.L;               // Update Lwrap
+            F_mat.D = M_LDR.D;               // Update Dwrap
+            F_mat.R = M_LDR.R * F_mat.R;     // Update Rwrap by multiplying with the existing R
+        }
+
+        F_matrices.push_back(F_mat);
+    }
+
+    return F_matrices;
+}
+
 // END OF LINEAR ALGEBRA SUBROUTINE //
 
 // MODEL SUBROUTINE //

@@ -561,6 +561,51 @@ void test_dqmc_vs_exact() {
      std::cout << "Acceptance rate: " << acceptance_rate << std::endl;
  }
 
+  void test_init_F_matrices() {
+     std::cout << "\n======= Testing init_F_matrices =======" << std::endl;
+
+     // Test parameters
+     int L = 4;                  // Lattice size (4x4)
+     double t = 1.0;             // Hopping parameter
+     double mu = -0.4;           // Chemical potential
+     double delta_tau = 0.1;     // Time step
+     int L_tau = 100;             // Number of matrices to wrap
+     int nwrap = 10;
+     bool is_symmetric = true;   // Symmetric Trotter decomposition
+
+     // Build the kinetic matrix and its exponential
+     arma::mat K = build_Kmat(L, t, mu);
+     arma::mat expK = calculate_exp_Kmat(K, delta_tau, -1.0);
+
+     // Initialize expV as a random matrix
+     arma::mat expV = arma::randu<arma::mat>(L * L, L_tau);
+
+     // Call wrap_B_matrices to get the reference result
+     LDRMatrix Bwrap_ref = wrap_B_matrices(expK, expV, nwrap, is_symmetric);
+
+     // Call init_F_matrices to get the test result
+     std::vector<LDRMatrix> F_matrices = init_F_matrices(expK, expV, nwrap, is_symmetric);
+
+     // Check if the last F_matrix matches the reference Bwrap
+     LDRMatrix Bwrap_test = F_matrices[0];
+
+     // Compare L, D, and R components
+     bool L_match = arma::approx_equal(Bwrap_test.L, Bwrap_ref.L, "absdiff", 1e-6);
+     bool D_match = arma::approx_equal(Bwrap_test.D, Bwrap_ref.D, "absdiff", 1e-6);
+     bool R_match = arma::approx_equal(Bwrap_test.R, Bwrap_ref.R, "absdiff", 1e-6);
+
+     if (L_match && D_match && R_match) {
+         std::cout << "Test PASSED: init_F_matrices matches wrap_B_matrices." <<
+ std::endl;
+     } else {
+         std::cout << "Test FAILED: init_F_matrices does not match wrap_B_matrices." <<
+ std::endl;
+         if (!L_match) std::cout << "L components differ." << std::endl;
+         if (!D_match) std::cout << "D components differ." << std::endl;
+         if (!R_match) std::cout << "R components differ." << std::endl;
+     }
+ }
+
 // Main function to run all tests
 int main() {
 
@@ -585,6 +630,8 @@ int main() {
     test_update_ratio_hubbard();
 
     test_dqmc_vs_exact();
+
+    test_init_F_matrices();
 
     return 0;
 }

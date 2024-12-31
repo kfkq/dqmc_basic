@@ -30,6 +30,8 @@ std::pair<arma::mat, double> calculate_invIpA(LDRMatrix& A_LDR);
 
 LDRMatrix wrap_B_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, bool is_symmetric);
 
+std::vector<LDRMatrix> init_F_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, bool is_symmetric);
+
 arma::mat build_Kmat(int L, double t, double mu);
 
 arma::mat calculate_exp_Kmat(const arma::mat& K, const double& delta_tau, double sign);
