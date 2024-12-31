@@ -1,5 +1,4 @@
 #include "subroutines.h"
-#include <mkl.h> // Include MKL header
 
 // ------------------------------------------------------
 // LINEAR ALGEBRA SUBROUTINE
@@ -185,7 +184,11 @@ LDRMatrix wrap_B_matrices(const arma::mat& expK, arma::mat& expV, int Nwrap, boo
         // Perform LDR multiplication:
         // Compute M = Bgroup[i] * (Lwrap * diag(Dwrap)).
         arma::mat M = Bgroup[i] * Bwrap.L;      // Multiply the group product with the current L matrix
-        M = M * arma::diagmat(Bwrap.D);        // Apply the diagonal matrix Dwrap
+        //M = M * arma::diagmat(Bwrap.D);        // Apply the diagonal matrix Dwrap
+        // Multiply M by the diagonal matrix D
+        for (size_t j = 0; j < M.n_cols; ++j) {
+            cblas_dscal(M.n_rows, Bwrap.D(j), M.colptr(j), 1);
+        }
 
         // Decompose M into new L, D, R using pivoted QR decomposition.
         LDRMatrix M_LDR = qr_LDR(M);
@@ -364,7 +367,7 @@ void propagate_equaltime_greens(
 }
 
 
-void symmmetric_warp_greens(
+void symmetric_warp_greens(
     arma::mat& G,                  // Green's function matrix (NxN), updated in place
     const arma::mat& expK,         // Exponential of the kinetic matrix: exp(-ΔτK) (NxN)
     const arma::mat& inv_expK,     // Inverse of expK: exp(+ΔτK) (NxN)
@@ -390,25 +393,26 @@ void local_update_greens(
     double r,                  // Determinant ratio
     double delta,              // Change in on-site energy
     int i,                     // Site index being updated
-    int l
+    int l,
+    arma::vec u,
+    arma::vec v
 ) {
     // Step 1: Extract column G(:, i) into u
-    arma::vec u = G.col(i);
+    u = G.col(i);
 
     // Step 2: Extract row G(i, :) into v and subtract identity row
-    arma::vec v = G.row(i).t();  // Transpose to match the vector orientation
+    v = G.row(i).t();  // Transpose to match the vector orientation
     v(i) = v(i) - 1.0;           // Subtract the identity term for v(i)
 
     // Step 3: Perform the rank-1 update G = G + (Δ/R) * u * v.t() using MKL dger
     double alpha = delta / r;
     int m = G.n_rows; // Number of rows in G
-    int n = G.n_cols; // Number of columns in G
     int incx = 1;     // Stride for vector x (u)
     int incy = 1;     // Stride for vector y (v)
     double* A = G.memptr(); // Pointer to the matrix data
     int lda = m;      // Leading dimension of A (number of rows)
 
-    cblas_dger(CblasColMajor, m, n, alpha, u.memptr(), incx, v.memptr(), incy, A, lda);
+    cblas_dger(CblasColMajor, m, m, alpha, u.memptr(), incx, v.memptr(), incy, A, lda);
 
     // Step 4: Update the diagonal on-site energy expV
     expV(i, l) = expV(i, l) * (1.0 + delta);
@@ -436,8 +440,8 @@ void sweep_time_slices(
 
         // Symmetric warp if enabled
         if (is_symmetric) {
-            symmmetric_warp_greens(Gup, expK, inv_expK, true);
-            symmmetric_warp_greens(Gdn, expK, inv_expK, true);
+            symmetric_warp_greens(Gup, expK, inv_expK, true);
+            symmetric_warp_greens(Gdn, expK, inv_expK, true);
         }
 
         // Shuffle the sites
@@ -470,8 +474,8 @@ void sweep_time_slices(
 
         // Symmetric warp reverse if enabled
         if (is_symmetric) {
-            symmmetric_warp_greens(Gup, expK, inv_expK, false);
-            symmmetric_warp_greens(Gdn, expK, inv_expK, false);
+            symmetric_warp_greens(Gup, expK, inv_expK, false);
+            symmetric_warp_greens(Gdn, expK, inv_expK, false);
         }
 
         // Propagate Green's functions for the next time slice
@@ -529,7 +533,7 @@ double measure_kinetic_energy(const arma::mat& Gup, const arma::mat& Gdn, double
         }
     }
 
-    return 2.0 * E_kin;
+    return 2.0 * E_kin / N;
 }
 
 double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, double U) {
@@ -540,7 +544,7 @@ double measure_potential_energy(const arma::mat& Gup, const arma::mat& Gdn, doub
         E_pot += U * (1.0 - Gup(i, i)) * (1.0 - Gdn(i, i));
     }
 
-    return E_pot;
+    return E_pot / N;
 }
 
 // Statistics computation function

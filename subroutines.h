@@ -7,6 +7,7 @@
 #include <armadillo>
 #include <numeric> // For std::accumulate and std::inner_product
 #include <cmath>   // For std::sqrt
+#include <mkl.h>
 
 // Struct for LDR representation
 struct LDRMatrix {
@@ -50,7 +51,7 @@ void propagate_equaltime_greens(
     bool forward
 );
 
-void symmmetric_warp_greens(
+void symmetric_warp_greens(
     arma::mat& G,
     const arma::mat& expK,
     const arma::mat& inv_expK,
@@ -63,7 +64,9 @@ void local_update_greens(
     double r,
     double delta,
     int i,
-    int l
+    int l,
+    arma::vec u,
+    arma::vec v
 );
 
 void sweep_time_slices(

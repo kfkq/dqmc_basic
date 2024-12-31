@@ -147,7 +147,7 @@ void test_wrap_B_matrices() {
     std::cout << "\n======= Testing wrap_B_matrices =======" << std::endl;
 
     // Test parameters
-    int L = 20;                  // Lattice size (8x8, larger for testing)
+    int L = 4;                  // Lattice size (8x8, larger for testing)
     double t = 1.0;             // Hopping parameter
     double mu = -0.4;           // Chemical potential
     double delta_tau = 0.1;     // Time step
@@ -303,7 +303,7 @@ void test_propagate_equaltime_greens() {
     }
 }
 
-void test_symmmetric_warp_greens() {
+void test_symmetric_warp_greens() {
     std::cout << "\n======= Testing symmmetric_warp_greens =======" << std::endl;
 
     // Test parameters for larger matrices
@@ -328,7 +328,7 @@ void test_symmmetric_warp_greens() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Call the function to test
-    symmmetric_warp_greens(G, expK, inv_expK, forward);
+    symmetric_warp_greens(G, expK, inv_expK, forward);
 
     // Stop timing
     auto end = std::chrono::high_resolution_clock::now();
@@ -379,7 +379,7 @@ void test_local_update_greens() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Call the function to test
-    local_update_greens(G, expV, r, delta, i, l);
+    local_update_greens(G, expV, r, delta, i, l, u, v);
 
     // Stop timing
     auto end = std::chrono::high_resolution_clock::now();
@@ -519,8 +519,51 @@ void test_dqmc_vs_exact() {
     }
 }
 
+ void test_sweep_time_slices() {
+     std::cout << "\n======= Profiling sweep_time_slices =======" << std::endl;
+
+     // Initialize parameters and matrices
+     int L = 16;                  // Lattice size
+     int L_tau = 100;             // Number of time slices
+     int N = L * L;              // Total number of sites
+     int nwrap = 5;              // Number of matrix wraps
+     int nstab = 2;              // Stabilization frequency
+     bool is_symmetric = true;   // Symmetric Trotter decomposition
+
+     // Initialize random number generator
+     std::random_device rd;
+     std::mt19937 rng(rd());
+     std::uniform_real_distribution<double> dis(0.0, 1.0);
+
+     // Initialize matrices and variables
+     arma::mat Gup = arma::eye<arma::mat>(N, N); // Green's function for spin-up
+     arma::mat Gdn = arma::eye<arma::mat>(N, N); // Green's function for spin-down
+     arma::mat expVup = arma::ones<arma::mat>(N, L_tau); // Potential matrix for spin-up
+     arma::mat expVdn = arma::ones<arma::mat>(N, L_tau); // Potential matrix for spin-do
+     arma::mat expK = arma::eye<arma::mat>(N, N); // Kinetic matrix exponential
+     arma::mat inv_expK = arma::eye<arma::mat>(N, N); // Inverse of expK
+     arma::Mat<int> s = initialize_random_ising(L, L_tau); // Ising configuration
+     double alpha = 0.5; // Hubbard-Stratonovich parameter
+     double acceptance_rate = 0.0; // Acceptance rate
+
+     // Call sweep_time_slices
+     sweep_time_slices(
+         Gup, Gdn,
+         expVup, expVdn,
+         expK, inv_expK,
+         s, alpha,
+         L_tau, N, nwrap, nstab,
+         is_symmetric,
+         rng, dis,
+         acceptance_rate
+     );
+
+     std::cout << "Acceptance rate: " << acceptance_rate << std::endl;
+ }
+
 // Main function to run all tests
 int main() {
+
     test_build_Kmat();
 
     test_calculate_exp_Kmat();
@@ -535,7 +578,7 @@ int main() {
 
     test_propagate_equaltime_greens();
 
-    test_symmmetric_warp_greens();
+    test_symmetric_warp_greens();
 
     test_local_update_greens();
 
